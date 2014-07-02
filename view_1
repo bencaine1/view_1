@@ -1,7 +1,8 @@
 SELECT        Ch.TestRequest, Ch.CellIndex, Ch.CycleType, Ch.Filename, Ch.CycleNum, Ch.dpt_time, Ch.mAhCharge, Ch.mWhCharge, CONVERT(float, 
                          SUBSTRING(Ch.DateAndAmps, 24, 31)) AS AChargeCur, Dis.mAhDischarge, Dis.mWhDischarge, Dis.mWhDischarge / Ch.mWhCharge AS EnEff, 
                          Ch.mWhCharge / Ch.mAhCharge AS Vch, Dis.mWhDischarge / Dis.mAhDischarge AS Vdis, AhDF3.COver10InitCap, CONVERT(float, SUBSTRING(Ch.DateAndAmps, 24, 
-                         31)) / AhDF3.COver10InitCap AS CRateCharge, Dis.ADisCur AS ADischargeCur, Dis.ADisCur / AhDF3.COver10InitCap AS CRateDischarge
+                         31)) / AhDF3.COver10InitCap AS CRateCharge, Dis.ADisCur AS ADischargeCur, Dis.ADisCur / AhDF3.COver10InitCap AS CRateDischarge, InitCap.InitialCapacity, 
+                         Dis.mAhDischarge / InitCap.InitialCapacity / 1000 AS CapRet
 FROM            (SELECT        dbo.CellLot.TestRequest, dbo.CellAssembly.CellIndex, MAX(dbo.CycleType.CycleTypeName) AS CycleType, dbo.CellCycle.CycleNum, 
                                                     MAX(dbo.CycleStep.dpt_time) AS dpt_time, MAX(dbo.CycleFile.Filename) AS Filename, SUM(dbo.CycleStep.amp_hr) * 1000 AS mAhCharge, 
                                                     MAX(dbo.CycleStep.watt_hr) * 1000 AS mWhCharge, MAX(CONVERT(varchar(50), dbo.CycleStep.dpt_time, 121) + CONVERT(varchar(50), 
@@ -38,6 +39,15 @@ FROM            (SELECT        dbo.CellLot.TestRequest, dbo.CellAssembly.CellInd
                                                                                    dbo.CycleStep AS CycleStep_2 ON CellCycle_2.CellCycleUID = CycleStep_2.cell_cycle_id AND 
                                                                                    CycleFile_2.FileID = CycleStep_2.file_id INNER JOIN
                                                                                    dbo.CycleType AS CycleType_2 ON CellCycle_2.CycleTypeUID = CycleType_2.CycleTypeUID
-                                                         WHERE        (CycleType_2.CycleTypeName = 'form') AND (CycleStep_2.state = 'D')
+                                                         WHERE        (CycleType_2.CycleTypeName = 'form') AND (CycleStep_2.state = 'D') AND (CycleStep_2.amp_hr <> 0)
                                                          GROUP BY CellLot_2.TestRequest, CellAssembly_2.CellIndex) AS Y) AS AhDF3 ON Dis.TestRequest = AhDF3.TestRequest AND 
-                         Dis.CellIndex = AhDF3.CellIndex
+                         Dis.CellIndex = AhDF3.CellIndex INNER JOIN
+                             (SELECT        MAX(CycleFile_2.Filename) AS Filename, MAX(CycleStep_2.amp_hr) AS InitialCapacity
+                               FROM            dbo.CellAssembly AS CellAssembly_2 INNER JOIN
+                                                         dbo.CellCycle AS CellCycle_2 ON CellAssembly_2.CellAssyUID = CellCycle_2.CellAssyUID INNER JOIN
+                                                         dbo.CellLot AS CellLot_2 ON CellAssembly_2.CellLotUID = CellLot_2.CellLotUID INNER JOIN
+                                                         dbo.CycleFile AS CycleFile_2 ON CellAssembly_2.CellAssyUID = CycleFile_2.CellAssyUID INNER JOIN
+                                                         dbo.CycleStep AS CycleStep_2 ON CellCycle_2.CellCycleUID = CycleStep_2.cell_cycle_id AND CycleFile_2.FileID = CycleStep_2.file_id INNER JOIN
+                                                         dbo.CycleType AS CycleType_2 ON CellCycle_2.CycleTypeUID = CycleType_2.CycleTypeUID
+                               WHERE        (CycleStep_2.state = 'D') AND (CycleStep_2.ES >= 128) AND (CellCycle_2.CycleNum <= 10)
+                               GROUP BY CellAssembly_2.CellAssyUID) AS InitCap ON Dis.Filename = InitCap.Filename
